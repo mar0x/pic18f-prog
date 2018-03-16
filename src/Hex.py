@@ -23,7 +23,7 @@ import sys
 
 class Hex:
     def __init__(self, fileName):
-        self.memory = [0] * 0x8000
+        self.memory = [0xFF] * 0x8000
         self.havememory = [0] * (0x8000/0x20)
         self.eeprom = [0] * 0x100
         self.haveeeprom = [0] * (0x100/0x20)
@@ -37,18 +37,6 @@ class Hex:
 
         fileSize = int(os.path.getsize(fileName))
         hexFile = open(fileName, 'r')
-
-        for i in range(0x8000):
-            self.memory[i] = 0xFF
-            self.havememory[i/0x20] = 0
-        for i in range(0x100):
-            self.eeprom[i] = 0
-            self.haveeeprom[i/0x20] = 0
-        for i in range(0x8):
-            self.id[i] = 0
-            self.haveid = 0
-        for i in range(0x0F):
-            self.fuseStatus[i] = 0
 
         while True:
             buf = hexFile.readline(128).translate(None, ':\n')

@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 """
 Copyright (C) 2012-2017  Kirill Kulakov, Jose Carlos Granja & Xerxes Ranby
@@ -23,17 +23,36 @@ import sys
 from Hex import *
 
 mcus = (["18f2455", 0x1260], ["18f2550", 0x1240], ["18f4455", 0x1202], ["18f4550", 0x1200], ["18f2420", 0x1140],
-        ["18f2520", 0x1100], ["18f4420", 0x10C0], ["18f4520", 0x1080])
+        ["18f2520", 0x1100], ["18f4420", 0x10C0], ["18f4520", 0x1080],
+        ["18f24k20", 0x20A0])
 
 
 def getOut():
     print "For help use --help"
     sys.exit(2)
 
+def outHex(addr, hex_buf, rt):
+
+    byte_count = len(hex_buf) / 2;
+
+    p = ":%02X%04X%02X" % (byte_count, addr, rt)
+    sum = byte_count + ((addr >> 8) & 0xFF) + (addr & 0xFF) + rt
+    for i in range(0, byte_count * 2, 2):
+        v = int(hex_buf[i:i+2], 16)
+        sum += v
+        p += "%02X" % v
+
+    sum = sum & 0xFF
+    sum = 0x100 - sum
+    sum = sum & 0xFF
+
+    p += "%02X" % sum
+
+    print p
 
 def main():
     try:
-        options, arguments = getopt.getopt(sys.argv[1:], 'hp:aP:i:levV', ['help', 'port=', 'list', 'erase'])
+        options, arguments = getopt.getopt(sys.argv[1:], 'hp:aP:i:levVr:', ['help', 'port=', 'list', 'erase'])
     except getopt.error, msg:
         print msg
         getOut()
@@ -44,6 +63,7 @@ def main():
     ERASE_MODE = False
     verbose = False
     extraVerbose = False
+    READ_MODE = ""
 
     for opt, arg in options:
         if opt in ('-h', '--help'):
@@ -68,21 +88,24 @@ def main():
             verbose = True
         elif opt in ('-v'):
             verbose = True
+        elif opt in ('-r'):
+            READ_MODE = arg
 
     if PORT == "":
         PORT = '/dev/ttyACM0'
-    if FILENAME == "" and not ERASE_MODE:
+    if FILENAME == "" and not ERASE_MODE and READ_MODE == "":
         print "You need to select an hex file with -i option"
         getOut()
 
     print ("Connecting to arduino..."),
 
     # Open Serial port
-    try:
-        arduino = Serial(PORT, 2000000)
-    except SerialException, msg:
-        print msg
-        sys.exit(2)
+#    try:
+#        arduino = Serial(PORT, 2000000)
+    arduino = Serial(PORT, 115200)
+#    except SerialException, msg:
+#        print msg
+#        sys.exit(2)
 
     time.sleep(2)
 
@@ -104,18 +127,54 @@ def main():
         if not mcu_found:
             arduino.flushInput()
             arduino.write('DX')  # asking Arduino for the DeviceID
-            deviceID = ord(arduino.read()) + ord(arduino.read()) * 256
 
-            for mcu, ID in mcus:
-                if ID == deviceID:
-                    print "\tYour MCU: " + mcu
-                    mcu_found = True
+            # Receive data
+            buf = ""
+            r = arduino.read()
+            while r != "X":
+                buf += r
+                r = arduino.read()
+            buf += r
 
-        if mcu_found:
+            # deviceID = ord(arduino.read()) + ord(arduino.read()) * 256
+            print "DX: " + buf
+
+#            for mcu, ID in mcus:
+#                if ID == deviceID:
+#                    print "\tYour MCU: " + mcu
+#                    mcu_found = True
+
+        if READ_MODE != "":
+            # Read
+            start, end = READ_MODE.split("-")
+            start_addr = int(start, 16)
+            end_addr = int(end, 16)
+            for addr in range(start_addr, end_addr, 32):
+                arduino.flushInput()
+                arduino.write("R%06XX" % addr)
+
+                # Receive data
+                buf = ""
+                r = arduino.read()
+                while r != "K":
+                    r = arduino.read()
+
+                # Receive data
+                while r != "X":
+                    buf += r
+                    r = arduino.read()
+                buf += r
+
+                outHex(addr, buf[8:8 + 16 * 2], 0)
+                outHex(addr + 16, buf[8 + 16 * 2:8 + 2 * 16 * 2], 0)
+
+            outHex(0, "", 1)
+
+        if False: # mcu_found:
             # Perform Bulk Erase
             print "Erasing chip............",
             arduino.flushInput()
-            arduino.write('EX')
+            #arduino.write('EX')
             if arduino.read() == "K":
                 print "\tSuccess"
 
@@ -138,7 +197,7 @@ def main():
                             if verbose:
                                 print buf
                             arduino.flushInput()
-                            arduino.write(buf.upper())
+                            #arduino.write(buf.upper())
                             arduino.read()
                         address += 0x20
                     print "\tSuccess"
@@ -159,7 +218,7 @@ def main():
                         if verbose:
                             print buf
                         arduino.flushInput()
-                        arduino.write(buf.upper())
+                        #arduino.write(buf.upper())
                         arduino.read()
                         print "\tSuccess"
 
@@ -180,7 +239,7 @@ def main():
                             if verbose:
                                 print buf
                             arduino.flushInput()
-                            arduino.write(buf.upper())
+                            #arduino.write(buf.upper())
                             arduino.read()
                         address += 0x20
 
@@ -200,7 +259,7 @@ def main():
                             buf += str(hex(address)[2:].zfill(6))
                             buf += "X"
                             arduino.flushInput()
-                            arduino.write((buf).upper())
+                            #arduino.write((buf).upper())
                             arduino.read()
 
                             # Receive data
@@ -244,7 +303,7 @@ def main():
                         buf += str(hex(0x200000)[2:].zfill(6))
                         buf += "X"
                         arduino.flushInput()
-                        arduino.write((buf).upper())
+                        #arduino.write((buf).upper())
                         arduino.read()
 
                         # Receive data
@@ -296,7 +355,7 @@ def main():
                             buf += str(hex(address + 0xF00000)[2:].zfill(6))
                             buf += "X"
                             arduino.flushInput()
-                            arduino.write((buf).upper())
+                            #arduino.write((buf).upper())
                             arduino.read()
 
                             # Receive data
@@ -348,7 +407,7 @@ def main():
                                     print "fuse "+str(hex(i))+" changed to "+str(hex(hexFile.getFuse(i)))
                                 print buf
                             arduino.flushInput()
-                            arduino.write(buf.upper())
+                            #arduino.write(buf.upper())
                             arduino.read()
 
                     print "\tSuccess"
